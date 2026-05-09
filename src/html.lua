@@ -257,7 +257,7 @@ function html.get_settings_page(data, flash)
     </div>
 
     <div class="footer">
-      mydayoff-spinefarm · SmartThings Edge Driver<br>
+      My Day Off Spinefarm · SmartThings Edge Driver<br>
       설정 저장 후 ST 앱에서 Refresh를 실행하세요.
     </div>
   </div>

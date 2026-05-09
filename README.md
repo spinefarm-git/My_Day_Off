@@ -1,4 +1,4 @@
-# mydayoff-spinefarm Edge Driver
+# My Day Off
 
 오늘이 휴일인지 4가지 기준으로 자동 판정하는 SmartThings Edge 드라이버입니다.
 
@@ -59,10 +59,10 @@
 ## 파일 구조
 
 ```
-mydayoff-spinefarm/
+My_Day_Off/
 ├── config.yaml
 ├── profiles/
-│   └── mydayoff-spinefarm.yaml
+│   └── my-day-off-main.yaml
 ├── capability/
 │   └── holidayJudgement/
 │       └── capability.yaml

@@ -1,8 +1,10 @@
 name: my-day-off-main
 components:
   - id: main
-    label: "휴일 판정 결과"  
+    label: "휴일 판정 결과"
     capabilities:
+      - id: achievedictionary39087.cardMessage
+        version: 1
       - id: achievedictionary39087.myDayOffStatus
         version: 1
       - id: achievedictionary39087.myDayOffDetails
@@ -76,3 +78,4 @@ preferences:
     preferenceType: boolean
     definition:
       default: false
+

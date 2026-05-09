@@ -399,10 +399,10 @@ local function device_info_changed(driver, device, event, args)
     -- 다음 사용 가능한 번호 찾기 (02, 03, ...)
     local max_num = 1
     for _, d in ipairs(driver:get_devices()) do
-      local num = d.device_network_id:match("-0?(%d+)$")
+      local num = (d.device_network_id or ""):match("-0?(%d+)$")
       if num then
         local n = tonumber(num)
-        if n > max_num then max_num = n end
+        if n and n > max_num then max_num = n end
       end
     end
     local next_num = max_num + 1
@@ -454,7 +454,7 @@ end
 -----------------------------------------------------------------------
 -- [5] 드라이버 정의 및 실행
 -----------------------------------------------------------------------
-local mydayoff_driver = Driver("mydayoff-spinefarm", {
+local mydayoff_driver = Driver("my-day-off", {
   discovery = discovery.handle_discovery,
 
   lifecycle_handlers = {

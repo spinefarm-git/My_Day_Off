@@ -8,7 +8,7 @@ local log = require "log"
 local discovery = {}
 
 function discovery.handle_discovery(driver, _should_continue)
-  log.info("mydayoff-spinefarm: 장치 찾기 시작")
+  log.info("my-day-off: 장치 찾기 시작")
 
   local metadata = {
     type = "LAN",
@@ -26,7 +26,7 @@ function discovery.handle_discovery(driver, _should_continue)
   for _, device in ipairs(driver:get_devices()) do
     if device.device_network_id == "mydayoff-spinefarm-01" then
       if device.preferences and device.preferences.addSameDevice then
-        log.info("mydayoff-spinefarm: 설정에 따라 Child Device 생성 시도")
+        log.info("my-day-off: 설정에 따라 Child Device 생성 시도")
         driver:try_create_device({
           type = "LAN",
           device_network_id = "mydayoff-spinefarm-02",

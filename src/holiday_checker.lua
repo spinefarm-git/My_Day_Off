@@ -17,8 +17,18 @@ local checker = {}
 -- Capabilities
 -- local debug_date_cap = capabilities["achievedictionary39087.debugDate"]  -- [DEBUG UI 숨김]
 local statusMessage_cap = capabilities["achievedictionary39087.debugMessage"]
+local cardMessage_cap   = capabilities["achievedictionary39087.cardMessage"]
 local status_cap        = capabilities["achievedictionary39087.myDayOffStatus"]
 local details_cap       = capabilities["achievedictionary39087.myDayOffDetails"]
+
+local function emit_card(device, msg)
+  local comp = device.profile.components.main
+  if comp and cardMessage_cap then
+    pcall(function()
+      device:emit_component_event(comp, cardMessage_cap.message({ value = msg }))
+    end)
+  end
+end
 
 local function emit_status(device, msg)
   local comp = device.profile.components.status
@@ -362,7 +372,9 @@ function checker.refresh(driver, device)
 
   -- 오류가 없을 때만 성공 상태 emit (오류 시 위에서 이미 emit됨)
   if not has_error then
-    emit_status(device, string.format("업데이트 완료: %s %s", today.display, final_status_str))
+    local card_msg = string.format("%s : %s", today.display, final_status_str)
+    emit_status(device, card_msg)
+    emit_card(device, card_msg)
   end
 
   return is_holiday, has_error
