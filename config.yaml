@@ -1,0 +1,6 @@
+name: My Day Off
+packageKey: mydayoff-spinefarm_v1
+description: "공휴일·캘린더 기반 오늘의 휴일 여부를 판정"
+permissions:
+  lan: {}
+  discovery: {}
