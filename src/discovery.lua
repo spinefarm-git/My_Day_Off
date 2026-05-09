@@ -31,7 +31,7 @@ function discovery.handle_discovery(driver, _should_continue)
           type = "LAN",
           device_network_id = "mydayoff-spinefarm-02",
           label = "My Day Off Spinefarm (Copy 1)",
-          profile = "mydayoff-spinefarm",
+          profile = "my-day-off-main",
           manufacturer = "SmartThings",
           model = "v1",
           vendor_provided_label = "Virtual"
