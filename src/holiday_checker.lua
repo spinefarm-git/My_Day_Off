@@ -373,7 +373,6 @@ function checker.refresh(driver, device)
   -- 오류가 없을 때만 성공 상태 emit (오류 시 위에서 이미 emit됨)
   if not has_error then
     local card_msg = string.format("%s : %s", today.display, final_status_str)
-    emit_status(device, card_msg)
     emit_card(device, card_msg)
   end
 
