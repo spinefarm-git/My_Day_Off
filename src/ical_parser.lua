@@ -101,7 +101,11 @@ end
 -----------------------------------------------------------------------
 -- [Core] 복수 캘린더 순회하며 오늘 휴일 여부 판정
 -----------------------------------------------------------------------
-function ical_parser.check_today(device, today_ymd)
+-----------------------------------------------------------------------
+-- [Core] iCal 파일 다운로드만 수행 (파싱 없음)
+--  반환: { user_ics = [{name, text}], google_ics = string|nil, any_error }
+-----------------------------------------------------------------------
+function ical_parser.download_raw(device)
   local cals_raw = device:get_field("calendars_data")
   local calendars = {}
   if cals_raw and cals_raw ~= "" then
@@ -110,12 +114,12 @@ function ical_parser.check_today(device, today_ymd)
 
   local proxy_url = device.preferences.proxyUrl
   if not proxy_url or proxy_url == "" then
-    return {}, {}, "proxyUrl 미설정"
+    return { user_ics = {}, google_ics = nil, any_error = "proxyUrl 미설정" }
   end
   local proxy_base = proxy_url:gsub("/+$", "")
 
-  local user_events = {}
-  local google_events = {}
+  local user_ics  = {}
+  local google_ics = nil
   local any_error = nil
 
   -- 1. 사용자 등록 캘린더
@@ -134,11 +138,7 @@ function ical_parser.check_today(device, today_ymd)
       end)
 
       if ok and code and tonumber(code) == 200 then
-        local ics_text = table.concat(resp_chunks)
-        local events = ical_parser.parse(ics_text, today_ymd)
-        for _, ev in ipairs(events) do
-          table.insert(user_events, ev)
-        end
+        table.insert(user_ics, { name = cal.name, text = table.concat(resp_chunks) })
       else
         log.warn(string.format("[iCal] %s 로드 실패 (HTTP %s)", cal.name, tostring(code)))
         any_error = any_error or string.format("%s 로드 실패", cal.name)
@@ -146,7 +146,7 @@ function ical_parser.check_today(device, today_ymd)
     end
   end
 
-  -- 2. 구글 공휴일 캘린더 (설정된 경우)
+  -- 2. 구글 공휴일 캘린더
   local detect_mode = device:get_field("holiday_detect_mode") or "google"
   if detect_mode == "google" then
     local google_url = "https://calendar.google.com/calendar/ical/ko.south_korea%23holiday%40group.v.calendar.google.com/public/basic.ics"
@@ -163,18 +163,46 @@ function ical_parser.check_today(device, today_ymd)
     end)
 
     if ok and code and tonumber(code) == 200 then
-      local ics_text = table.concat(resp_chunks)
-      local events = ical_parser.parse(ics_text, today_ymd)
-      for _, ev in ipairs(events) do
-        table.insert(google_events, ev)
-      end
+      google_ics = table.concat(resp_chunks)
     else
       log.warn("[iCal] 구글 공휴일 로드 실패")
       any_error = any_error or "구글 공휴일 로드 실패"
     end
   end
 
-  return user_events, google_events, any_error
+  return { user_ics = user_ics, google_ics = google_ics, any_error = any_error }
+end
+
+-----------------------------------------------------------------------
+-- [Core] 이미 다운로드된 raw 데이터를 특정 날짜로 파싱
+-----------------------------------------------------------------------
+function ical_parser.parse_from_raw(raw, today_ymd)
+  local user_events  = {}
+  local google_events = {}
+
+  for _, cal in ipairs(raw.user_ics) do
+    local events = ical_parser.parse(cal.text, today_ymd)
+    for _, ev in ipairs(events) do
+      table.insert(user_events, ev)
+    end
+  end
+
+  if raw.google_ics then
+    local events = ical_parser.parse(raw.google_ics, today_ymd)
+    for _, ev in ipairs(events) do
+      table.insert(google_events, ev)
+    end
+  end
+
+  return user_events, google_events, raw.any_error
+end
+
+-----------------------------------------------------------------------
+-- [Convenience] 다운로드 + 파싱 한 번에 (기존 호환)
+-----------------------------------------------------------------------
+function ical_parser.check_today(device, today_ymd)
+  local raw = ical_parser.download_raw(device)
+  return ical_parser.parse_from_raw(raw, today_ymd)
 end
 
 return ical_parser

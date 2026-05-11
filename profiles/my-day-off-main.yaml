@@ -16,6 +16,16 @@ components:
     categories:
       - name: WiFiRouter
 
+  - id: tomorrow
+    label: "내일"
+    capabilities:
+      - id: achievedictionary39087.myDayOffStatus
+        version: 1
+      - id: achievedictionary39087.myDayOffDetails
+        version: 1
+    categories:
+      - name: WiFiRouter
+
   - id: toggle
     label: "휴일/평일 강제전환"
     capabilities:

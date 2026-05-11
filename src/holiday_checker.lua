@@ -99,12 +99,32 @@ function checker.get_effective_today(device)
 end
 
 -----------------------------------------------------------------------
+-- [Helper] 내일 날짜 구조체 반환 (dateOffset + 1)
+-----------------------------------------------------------------------
+local function get_tomorrow(device)
+  local offset = tonumber(device.preferences and device.preferences.dateOffset) or 0
+  local now_kst = os.time() + (9 * 3600) + ((offset + 1) * 86400)
+  local t = os.date("*t", now_kst)
+  return {
+    year    = t.year, month = t.month, day = t.day,
+    ymd     = string.format("%04d%02d%02d", t.year, t.month, t.day),
+    md      = string.format("%02d/%02d", t.month, t.day),
+    wday    = t.wday,
+    display = string.format("+1 %d/%d (%s)", t.month, t.day, WDAY_NAMES[t.wday] or "?"),
+  }
+end
+
+-----------------------------------------------------------------------
 -- [판정단]
 -----------------------------------------------------------------------
-local function check_public_holiday(device, today)
+local function check_public_holiday(device, today, pub_items)
   local is_hol, hol_name, api_err
   local ok, err_msg = pcall(function()
-    is_hol, hol_name, api_err = public_api.check_today(device, today)
+    if pub_items then
+      is_hol, hol_name, api_err = public_api.check_date_from_items(pub_items, today.ymd)
+    else
+      is_hol, hol_name, api_err = public_api.check_today(device, today)
+    end
   end)
 
   local api_key = device:get_field("api_key_public")
@@ -120,9 +140,14 @@ local function check_public_holiday(device, today)
   return false, "평일", "해당없음", reg
 end
 
-local function check_calendar_holiday(device, today_ymd)
+local function check_calendar_holiday(device, today_ymd, raw_ical)
   local detect_mode = device:get_field("holiday_detect_mode") or "google"
-  local user_events, google_events, cal_err = ical_parser.check_today(device, today_ymd)
+  local user_events, google_events, cal_err
+  if raw_ical then
+    user_events, google_events, cal_err = ical_parser.parse_from_raw(raw_ical, today_ymd)
+  else
+    user_events, google_events, cal_err = ical_parser.check_today(device, today_ymd)
+  end
   
   local holiday_keywords = device:get_field("calendar_keyword") or ""
   local weekday_keywords = device:get_field("weekday_keyword") or ""
@@ -262,13 +287,28 @@ function checker.refresh(driver, device)
   local detect_mode = device:get_field("holiday_detect_mode") or "google"
   local mode_name = (detect_mode == "public") and "공공 API" or (detect_mode == "google" and "구글" or "미사용")
 
+  -- iCal 다운로드 1회 (오늘/내일 파싱에 공유)
+  local raw_ical = ical_parser.download_raw(device)
+
+  -- 공공 API 월 데이터 선행 조회 (오늘/내일 재사용, 월 경계 시 2회)
+  local pub_items_today, pub_items_tmr
+  if detect_mode == "public" then
+    pub_items_today = public_api.fetch_month(device, today.year, today.month)
+    local tmr = get_tomorrow(device)
+    if tmr.year == today.year and tmr.month == today.month then
+      pub_items_tmr = pub_items_today
+    else
+      pub_items_tmr = public_api.fetch_month(device, tmr.year, tmr.month)
+    end
+  end
+
   -- 판정 시작
-  local res_cal = check_calendar_holiday(device, today.ymd)
+  local res_cal = check_calendar_holiday(device, today.ymd, raw_ical)
 
   -- ① 공휴일 (Public or Google)
   local hol1, jdg1, dtl1, reg1 = false, "평일", "미사용", mode_name
   if detect_mode == "public" then
-    hol1, jdg1, dtl1, _ = check_public_holiday(device, today)
+    hol1, jdg1, dtl1, _ = check_public_holiday(device, today, pub_items_today)
     if jdg1 == "오류" then
       log.warn(string.format("[휴일판정] 공공 API 오류: %s", dtl1))
       emit_status(device, "공공 API 오류: " .. dtl1)
@@ -376,18 +416,123 @@ function checker.refresh(driver, device)
     emit_card(device, card_msg)
   end
 
+  checker.refresh_tomorrow(driver, device, raw_ical, pub_items_tmr)
+
   return is_holiday, has_error
+end
+
+-----------------------------------------------------------------------
+-- [Core] 내일 휴일 판정 + tomorrow 컴포넌트 emit
+-----------------------------------------------------------------------
+function checker.refresh_tomorrow(driver, device, raw_ical, pub_items_tmr)
+  local tmr_comp = device.profile.components.tomorrow
+  if not tmr_comp then return end
+
+  local tomorrow = get_tomorrow(device)
+  log.info(string.format("[내일판정] 기준날짜: %s - %s", tomorrow.ymd, tomorrow.display))
+
+  local detect_mode = device:get_field("holiday_detect_mode") or "google"
+  local mode_name = (detect_mode == "public") and "공공 API" or (detect_mode == "google" and "구글" or "미사용")
+
+  local res_cal = check_calendar_holiday(device, tomorrow.ymd, raw_ical)
+
+  -- ① 공휴일 (Public or Google)
+  local hol1, jdg1, dtl1, reg1 = false, "평일", "미사용", mode_name
+  if detect_mode == "public" then
+    hol1, jdg1, dtl1, _ = check_public_holiday(device, tomorrow, pub_items_tmr)
+    if jdg1 == "오류" then
+      log.warn(string.format("[내일판정] 공공 API 오류: %s", dtl1))
+      dtl1 = "-"
+    end
+  elseif detect_mode == "google" then
+    if res_cal.cal_err then
+      jdg1 = "오류"
+      dtl1 = "-"
+    else
+      hol1 = res_cal.google_is_hol
+      jdg1 = hol1 and "휴일" or "평일"
+      dtl1 = res_cal.google_hol_desc
+    end
+  else
+    jdg1, dtl1 = "-", "-"
+  end
+
+  -- ② 사용자 캘린더
+  local hol2 = res_cal.user_is_hol
+  local jdg2 = hol2 and "휴일" or "평일"
+  local dtl2 = hol2 and res_cal.user_hol_desc or "일정없음"
+  local reg2 = res_cal.reg_user
+  if res_cal.cal_err then
+    jdg2 = "오류"
+    dtl2 = "-"
+  end
+
+  -- ③ 기타 규칙
+  local hol3, jdg3, dtl3, reg3 = check_custom_dates(device, tomorrow.md)
+  local hol4, jdg4, dtl4, reg4 = check_weekday_rule(device, tomorrow.wday)
+
+  -- 최종 판정 (매뉴얼 오버라이드 미적용)
+  local is_holiday, final_str
+  if res_cal.is_forced_weekday then
+    is_holiday = false
+    final_str = "평일"
+    jdg2 = "평일(F)"
+    dtl2 = res_cal.forced_desc
+  else
+    is_holiday = hol1 or hol2 or hol3 or hol4
+    final_str = is_holiday and "휴일" or "평일"
+  end
+
+  -- Emit myDayOffDetails
+  if details_cap then
+    pcall(function()
+      device:emit_component_event(tmr_comp, details_cap.publicReg({ value = reg1 }))
+      device:emit_component_event(tmr_comp, details_cap.publicHol({ value = jdg1 }))
+      device:emit_component_event(tmr_comp, details_cap.publicDet({ value = dtl1 }))
+
+      device:emit_component_event(tmr_comp, details_cap.calReg({ value = reg2 }))
+      device:emit_component_event(tmr_comp, details_cap.calHol({ value = jdg2 }))
+      device:emit_component_event(tmr_comp, details_cap.calDet({ value = dtl2 }))
+
+      device:emit_component_event(tmr_comp, details_cap.customReg({ value = reg3 }))
+      device:emit_component_event(tmr_comp, details_cap.customHol({ value = jdg3 }))
+      device:emit_component_event(tmr_comp, details_cap.customDet({ value = dtl3 }))
+
+      device:emit_component_event(tmr_comp, details_cap.weekdayReg({ value = reg4 }))
+      device:emit_component_event(tmr_comp, details_cap.weekdayHol({ value = jdg4 }))
+      device:emit_component_event(tmr_comp, details_cap.weekdayDet({ value = dtl4 }))
+    end)
+  end
+
+  -- Emit myDayOffStatus
+  if status_cap then
+    pcall(function()
+      device:emit_component_event(tmr_comp, status_cap.todayDate({ value = tomorrow.display }))
+    end)
+    pcall(function()
+      device:emit_component_event(tmr_comp, status_cap.holiday({ value = final_str }))
+    end)
+  end
 end
 
 -----------------------------------------------------------------------
 -- [Helper] 강제 조회/오버라이드 시 로딩 표시
 -----------------------------------------------------------------------
 function checker.emit_loading(device)
+  local loading_cap = capabilities["achievedictionary39087.myDayOffStatus"]
+  if not loading_cap then return end
+
   local main_comp = device.profile.components.main
-  local status_cap = capabilities["achievedictionary39087.myDayOffStatus"]
-  if main_comp and status_cap then
+  if main_comp then
     pcall(function()
-      device:emit_component_event(main_comp, status_cap.todayDate({ value = "조회중..." }))
+      device:emit_component_event(main_comp, loading_cap.todayDate({ value = "조회중..." }))
+    end)
+  end
+
+  local tmr_comp = device.profile.components.tomorrow
+  if tmr_comp then
+    pcall(function()
+      device:emit_component_event(tmr_comp, loading_cap.todayDate({ value = "조회중..." }))
     end)
   end
 end
