@@ -110,7 +110,7 @@ local function get_tomorrow(device)
     ymd     = string.format("%04d%02d%02d", t.year, t.month, t.day),
     md      = string.format("%02d/%02d", t.month, t.day),
     wday    = t.wday,
-    display = string.format("+1 %d/%d (%s)", t.month, t.day, WDAY_NAMES[t.wday] or "?"),
+    display = string.format("[+%d] %d/%d (%s)", offset + 1, t.month, t.day, WDAY_NAMES[t.wday] or "?"),
   }
 end
 
